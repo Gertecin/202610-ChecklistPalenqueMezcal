@@ -1,2 +1,2 @@
-# 202610-ChecklistPalenqueMezcal
+# 261026-ChecklistPalenqueMezcal
 App de seguimiento con cheklist
