@@ -5,6 +5,40 @@ Aplicación de checklist de calidad para partidas de producción de mezcal artes
 - Repositorio Github: https://github.com/Gertecin/261026-ChecklistPalenqueMezcal/
 - Web de visualizacion:  https://gertecin.github.io/261026-ChecklistPalenqueMezcal/
 
+## Estructura del proyecto
+261026-ChecklistPalenqueMezcal/
+├── .github/
+│   └── workflows/
+│       └── static.yml          # Workflow de GitHub Actions para deploy automático
+├── public/
+│   ├── favicon.svg             # Icono de la pestaña del navegador
+│   └── icons.svg               # Iconos adicionales
+├── src/
+│   ├── assets/
+│   │   ├── hero.png            # Imagen de fondo (si se usa)
+│   │   ├── react.svg           # Logo React
+│   │   └── vite.svg            # Logo Vite
+│   ├── App.jsx                 # Componente principal con toda la lógica
+│   ├── App.css                 # Estilos base (vacío, usa Tailwind)
+│   ├── index.css               # Configuración de Tailwind y colores personalizados
+│   ── main.jsx                # Punto de entrada de React
+├── .gitignore                  # Archivos a ignorar en Git (node_modules, dist)
+├── eslint.config.js            # Configuración de ESLint
+├── index.html                  # HTML principal (carga fuentes y scripts)
+├── package.json                # Dependencias y scripts del proyecto
+├── package-lock.json           # Versiones exactas de dependencias
+── vite.config.js              # Configuración de Vite + Tailwind + base path
+└── README.md                   # Documentación del proyecto
+
+## Descripcion archivos clave
+Archivo | Función
+src/App.jsx | Toda la lógica de la app: checklist, historial, admin, modales
+src/index.css | Paleta de colores (terracota, negro, dorado, gris) y tipografías
+vite.config.js | Configura el base: '/261026-ChecklistPalenqueMezcal/' para GitHub Pages
+index.html | Carga las fuentes Google (Oswald + Inter) y el script de React
+.github/workflows/static.yml | Build y deploy automático a GitHub Pages en cada push
+package.json | Scripts: npm run dev, npm run build, npm run preview
+
 ## Características
 - Checklist por partida con controles de calidad
 - Historial de todas las partidas
@@ -18,11 +52,6 @@ Aplicación de checklist de calidad para partidas de producción de mezcal artes
 npm install
 npm run dev
 
-Datos de ejemplo
-La aplicación incluye mas 20 partidas precargadas con:
-Fechas variadas
-Diferentes tipos de agave (Espadín, Tobalá, Tepeztate, etc.)
-con mas de 3 partidas con incidencias marcadas
 
 ## Funcionalidades
 
@@ -58,6 +87,12 @@ Gris Oscuro: #2A2620
 ### Tipografía
 Títulos: Oswald
 Texto: Inter
+
+### Datos de ejemplo
+La aplicación incluye mas 20 partidas precargadas con:
+Fechas variadas
+Diferentes tipos de agave (Espadín, Tobalá, Tepeztate, etc.)
+con mas de 3 partidas con incidencias marcadas
 
 ## Reiniciar datos de ejemplo
 Abrir DevTools del navegador (F12)
