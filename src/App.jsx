@@ -204,7 +204,7 @@ function App() {
     crearNuevaPartida(itemsEvaluados, tieneIncidencia, formData.nombre, formData.lote, formData.fecha, formData.observaciones, 0)
   }
 
-  const crearNuevaPartida = (itemsEvaluados, tieneIncidencia, nombre, lote, fecha, observaciones, revision) => {
+   const crearNuevaPartida = (itemsEvaluados, tieneIncidencia, nombre, lote, fecha, observaciones, revision, loteAnterior = null) => {
     const nuevaPartida = {
       id: `PARTIDA-${lote}-${revision}`,
       lote: lote,
@@ -216,11 +216,18 @@ function App() {
       revision
     }
 
-    const otras = partidas.filter(p => getLote(p) !== lote)
+    // Si hay un lote anterior (sobrescritura), eliminarlo
+    let otras = partidas
+    if (loteAnterior) {
+      otras = partidas.filter(p => getLote(p) !== loteAnterior)
+    } else {
+      otras = partidas.filter(p => getLote(p) !== lote)
+    }
+    
     const nuevasPartidas = [nuevaPartida, ...otras]
     setPartidas(nuevasPartidas)
     
-    // Calcular el siguiente lote ANTES de resetear
+    // Calcular el siguiente lote
     const siguienteLote = generarLoteAutomatico(nuevasPartidas, fecha)
     
     setFormData({
@@ -234,7 +241,7 @@ function App() {
     alert('Checklist guardado correctamente')
   }
 
-  const confirmarSobrescribir = () => {
+   const confirmarSobrescribir = () => {
     if (!overwriteData) return
     const { existente, itemsEvaluados, tieneIncidencia } = overwriteData
     const nuevaRevision = (existente.revision || 0) + 1
@@ -246,7 +253,8 @@ function App() {
       formData.lote,
       formData.fecha,
       formData.observaciones,
-      nuevaRevision
+      nuevaRevision,
+      existente.lote  // ← Pasamos el lote anterior para eliminarlo
     )
     
     setShowOverwriteModal(false)
@@ -289,7 +297,8 @@ function App() {
       nuevoLote,
       formData.fecha,
       formData.observaciones,
-      0
+      0,
+      overwriteData ? overwriteData.existente.lote : null
     )
     
     setShowNewNameModal(false)
