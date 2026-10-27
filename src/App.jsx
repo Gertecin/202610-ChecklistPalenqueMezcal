@@ -204,10 +204,12 @@ function App() {
     crearNuevaPartida(itemsEvaluados, tieneIncidencia, formData.nombre, formData.lote, formData.fecha, formData.observaciones, 0)
   }
 
-   const crearNuevaPartida = (itemsEvaluados, tieneIncidencia, nombre, lote, fecha, observaciones, revision, loteAnterior = null) => {
+  const crearNuevaPartida = (itemsEvaluados, tieneIncidencia, nombre, lote, fecha, observaciones, revision, mantenerLote = false) => {
+    const loteFinal = mantenerLote ? lote : generarLoteAutomatico(partidas, fecha)
+    
     const nuevaPartida = {
-      id: `PARTIDA-${lote}-${revision}`,
-      lote: lote,
+      id: `PARTIDA-${loteFinal}-${revision}`,
+      lote: loteFinal,
       nombre: nombre,
       fecha: fecha,
       items: itemsEvaluados,
@@ -216,18 +218,19 @@ function App() {
       revision
     }
 
-    // Si hay un lote anterior (sobrescritura), eliminarlo
-    let otras = partidas
-    if (loteAnterior) {
-      otras = partidas.filter(p => getLote(p) !== loteAnterior)
+    // Filtrar: si mantenemos lote, quitamos solo el anterior con ese nombre
+    // Si no, quitamos cualquier partida con ese lote
+    let otras
+    if (mantenerLote) {
+      otras = partidas.filter(p => getNombre(p).toLowerCase() !== nombre.toLowerCase())
     } else {
-      otras = partidas.filter(p => getLote(p) !== lote)
+      otras = partidas.filter(p => getLote(p) !== loteFinal)
     }
     
     const nuevasPartidas = [nuevaPartida, ...otras]
     setPartidas(nuevasPartidas)
     
-    // Calcular el siguiente lote
+    // Calcular el siguiente lote para el formulario
     const siguienteLote = generarLoteAutomatico(nuevasPartidas, fecha)
     
     setFormData({
@@ -241,7 +244,7 @@ function App() {
     alert('Checklist guardado correctamente')
   }
 
-   const confirmarSobrescribir = () => {
+  const confirmarSobrescribir = () => {
     if (!overwriteData) return
     const { existente, itemsEvaluados, tieneIncidencia } = overwriteData
     const nuevaRevision = (existente.revision || 0) + 1
@@ -250,11 +253,11 @@ function App() {
       itemsEvaluados,
       tieneIncidencia,
       formData.nombre,
-      formData.lote,
+      existente.lote,  // ← Usamos el lote existente
       formData.fecha,
       formData.observaciones,
       nuevaRevision,
-      existente.lote  // ← Pasamos el lote anterior para eliminarlo
+      true  // ← mantenerLote = true
     )
     
     setShowOverwriteModal(false)
@@ -275,7 +278,7 @@ function App() {
     setNuevoNombre('')
   }
 
-  const confirmarNuevoNombre = () => {
+   const confirmarNuevoNombre = () => {
     if (!nuevoNombre.trim()) {
       alert('Por favor indicá un nombre para el nuevo lote')
       return
@@ -288,17 +291,16 @@ function App() {
     }
     
     const { itemsEvaluados, tieneIncidencia } = pendingData
-    const nuevoLote = generarLoteAutomatico(partidas, formData.fecha)
     
     crearNuevaPartida(
       itemsEvaluados,
       tieneIncidencia,
       nuevoNombre,
-      nuevoLote,
+      formData.lote,
       formData.fecha,
       formData.observaciones,
       0,
-      overwriteData ? overwriteData.existente.lote : null
+      false  // ← mantenerLote = false, genera lote nuevo
     )
     
     setShowNewNameModal(false)
