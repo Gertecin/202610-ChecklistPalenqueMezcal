@@ -53,6 +53,9 @@ const formatearFecha = (fechaISO) => {
   return `${d}/${m}/${y}`
 }
 
+const getLote = (p) => p.lote || p.numeroLote || ''
+const getNombre = (p) => p.nombre || p.numeroLote || ''
+
 const generarLoteAutomatico = (partidas, fecha) => {
   const f = fecha ? new Date(fecha) : new Date()
   const aa = String(f.getFullYear()).slice(-2)
@@ -60,7 +63,7 @@ const generarLoteAutomatico = (partidas, fecha) => {
   const dd = String(f.getDate()).padStart(2, '0')
   const prefijo = `${aa}${mm}${dd}`
   
-  const partidasDelDia = partidas.filter(p => p.lote.startsWith(prefijo))
+  const partidasDelDia = partidas.filter(p => getLote(p).startsWith(prefijo))
   const numero = String(partidasDelDia.length + 1).padStart(3, '0')
   return `${prefijo}-${numero}`
 }
@@ -77,7 +80,6 @@ function App() {
   const [overwriteData, setOverwriteData] = useState(null)
   const [showNewNameModal, setShowNewNameModal] = useState(false)
   const [nuevoNombre, setNuevoNombre] = useState('')
-  const [pendingSave, setPendingSave] = useState(null)
   
   const [formData, setFormData] = useState({
     nombre: '',
@@ -92,7 +94,16 @@ function App() {
     const savedItems = localStorage.getItem('checklistItems')
     
     if (savedPartidas) {
-      setPartidas(JSON.parse(savedPartidas))
+      let parsed = JSON.parse(savedPartidas)
+      // Migrar partidas viejas que no tienen lote/nombre
+      parsed = parsed.map(p => ({
+        ...p,
+        lote: getLote(p),
+        nombre: getNombre(p),
+        revision: p.revision || 0
+      }))
+      setPartidas(parsed)
+      localStorage.setItem('partidas', JSON.stringify(parsed))
     } else {
       const seedData = generateSeedData()
       setPartidas(seedData)
@@ -142,7 +153,7 @@ function App() {
 
     const tieneIncidencia = itemsEvaluados.some(item => !item.cumplido)
 
-    const existente = partidas.find(p => p.lote === formData.lote)
+    const existente = partidas.find(p => getLote(p) === formData.lote)
 
     if (existente) {
       setOverwriteData({
@@ -169,7 +180,7 @@ function App() {
       revision
     }
 
-    const otras = partidas.filter(p => p.lote !== lote)
+    const otras = partidas.filter(p => getLote(p) !== lote)
     setPartidas([nuevaPartida, ...otras])
     
     setFormData({
@@ -216,7 +227,7 @@ function App() {
     
     const { itemsEvaluados, tieneIncidencia } = overwriteData
     const nuevoLote = generarLoteAutomatico(
-      partidas.filter(p => p.lote !== overwriteData.existente.lote),
+      partidas.filter(p => getLote(p) !== overwriteData.existente.lote),
       formData.fecha
     )
     
@@ -236,7 +247,7 @@ function App() {
   }
 
   const eliminarLotes = (lotesAEliminar) => {
-    const nuevas = partidas.filter(p => !lotesAEliminar.includes(p.lote))
+    const nuevas = partidas.filter(p => !lotesAEliminar.includes(getLote(p)))
     setPartidas(nuevas)
     alert(`${lotesAEliminar.length} lote(s) eliminado(s) correctamente`)
   }
@@ -260,10 +271,11 @@ function App() {
   const ultimas30 = partidas.slice(0, 30)
   const conIncidencias = ultimas30.filter(p => p.tieneIncidencia).length
 
-  const partidasFiltradas = partidas.filter(p => 
-    p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-    p.lote.toLowerCase().includes(busqueda.toLowerCase())
-  )
+  const partidasFiltradas = partidas.filter(p => {
+    const nombre = getNombre(p).toLowerCase()
+    const lote = getLote(p).toLowerCase()
+    return nombre.includes(busqueda.toLowerCase()) || lote.includes(busqueda.toLowerCase())
+  })
 
   return (
     <div className="min-h-screen bg-negro text-dorado">
@@ -594,12 +606,12 @@ function HistorialView({ partidas, setPartidaSeleccionada, busqueda, setBusqueda
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <h3 className="font-bold text-terracota">
-                  {partida.nombre}
+                  {getNombre(partida)}
                   {partida.revision > 0 && (
                     <span className="ml-2 text-xs text-dorado/70">- rev. {partida.revision}</span>
                   )}
                 </h3>
-                <p className="text-sm text-dorado/70">Lote: {partida.lote}</p>
+                <p className="text-sm text-dorado/70">Lote: {getLote(partida)}</p>
                 <p className="text-sm text-dorado/70">Fecha: {formatearFecha(partida.fecha)}</p>
               </div>
               {partida.tieneIncidencia && (
@@ -626,7 +638,7 @@ function DetallePartidaView({ partida, setVista }) {
     <div className="space-y-6 pb-20">
       <div className="bg-gris-oscuro p-4 rounded-lg border border-terracota">
         <h2 className="text-xl font-bold mb-4 text-terracota">
-          {partida.nombre}
+          {getNombre(partida)}
           {partida.revision > 0 && (
             <span className="ml-2 text-base text-dorado/70">- rev. {partida.revision}</span>
           )}
@@ -634,7 +646,7 @@ function DetallePartidaView({ partida, setVista }) {
         <div className="space-y-2">
           <p className="flex justify-between">
             <span className="text-dorado/70">Lote:</span>
-            <span className="font-bold">{partida.lote}</span>
+            <span className="font-bold">{getLote(partida)}</span>
           </p>
           <p className="flex justify-between">
             <span className="text-dorado/70">Fecha:</span>
@@ -759,23 +771,23 @@ function AdminView({ checklistItems, handleSaveItems, setVista, partidas, elimin
               {partidas.map((partida) => (
                 <div 
                   key={partida.id}
-                  onClick={() => toggleLote(partida.lote)}
+                  onClick={() => toggleLote(getLote(partida))}
                   className={`flex items-center gap-3 p-3 rounded cursor-pointer border ${
-                    lotesSeleccionados.includes(partida.lote)
+                    lotesSeleccionados.includes(getLote(partida))
                       ? 'bg-red-900/30 border-red-600'
                       : 'bg-negro border-dorado/30'
                   }`}
                 >
                   <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
-                    lotesSeleccionados.includes(partida.lote)
+                    lotesSeleccionados.includes(getLote(partida))
                       ? 'bg-red-600 border-red-600'
                       : 'border-dorado'
                   }`}>
-                    {lotesSeleccionados.includes(partida.lote) && <X size={14} className="text-white" />}
+                    {lotesSeleccionados.includes(getLote(partida)) && <X size={14} className="text-white" />}
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-sm">{partida.nombre}</p>
-                    <p className="text-xs text-dorado/70">Lote: {partida.lote} - {formatearFecha(partida.fecha)}</p>
+                    <p className="font-bold text-sm">{getNombre(partida)}</p>
+                    <p className="text-xs text-dorado/70">Lote: {getLote(partida)} - {formatearFecha(partida.fecha)}</p>
                   </div>
                   {partida.tieneIncidencia && (
                     <span className="bg-red-600 text-white px-2 py-1 rounded text-xs">INC</span>
