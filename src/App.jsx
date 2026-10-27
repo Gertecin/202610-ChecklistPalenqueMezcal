@@ -94,6 +94,7 @@ function App() {
   const [showNewNameModal, setShowNewNameModal] = useState(false)
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nombreExiste, setNombreExiste] = useState(false)
+  const [pendingData, setPendingData] = useState(null)
   
   const [formData, setFormData] = useState({
     nombre: '',
@@ -134,15 +135,27 @@ function App() {
     }
   }, [partidas])
 
+  // Regenerar lote cuando cambia la fecha o las partidas
   useEffect(() => {
-    if (formData.fecha) {
+    if (formData.fecha && partidas.length > 0) {
       const nuevoLote = generarLoteAutomatico(partidas, formData.fecha)
       setFormData(prev => ({
         ...prev,
         lote: nuevoLote
       }))
     }
-  }, [formData.fecha, partidas])
+  }, [formData.fecha])
+
+  // Regenerar lote cuando se actualizan las partidas (después de guardar)
+  useEffect(() => {
+    if (partidas.length > 0 && formData.fecha && !formData.nombre) {
+      const nuevoLote = generarLoteAutomatico(partidas, formData.fecha)
+      setFormData(prev => ({
+        ...prev,
+        lote: nuevoLote
+      }))
+    }
+  }, [partidas])
 
   useEffect(() => {
     if (formData.nombre.trim()) {
@@ -204,12 +217,16 @@ function App() {
     }
 
     const otras = partidas.filter(p => getLote(p) !== lote)
-    setPartidas([nuevaPartida, ...otras])
+    const nuevasPartidas = [nuevaPartida, ...otras]
+    setPartidas(nuevasPartidas)
+    
+    // Calcular el siguiente lote ANTES de resetear
+    const siguienteLote = generarLoteAutomatico(nuevasPartidas, fecha)
     
     setFormData({
       nombre: '',
-      lote: '',
-      fecha: new Date().toISOString().split('T')[0],
+      lote: siguienteLote,
+      fecha: fecha,
       items: {},
       observaciones: ''
     })
@@ -218,6 +235,7 @@ function App() {
   }
 
   const confirmarSobrescribir = () => {
+    if (!overwriteData) return
     const { existente, itemsEvaluados, tieneIncidencia } = overwriteData
     const nuevaRevision = (existente.revision || 0) + 1
     
@@ -236,6 +254,13 @@ function App() {
   }
 
   const cancelarSobrescribir = () => {
+    // Guardar los datos necesarios antes de limpiar
+    if (overwriteData) {
+      setPendingData({
+        itemsEvaluados: overwriteData.itemsEvaluados,
+        tieneIncidencia: overwriteData.tieneIncidencia
+      })
+    }
     setShowOverwriteModal(false)
     setOverwriteData(null)
     setShowNewNameModal(true)
@@ -248,11 +273,14 @@ function App() {
       return
     }
     
-    const { itemsEvaluados, tieneIncidencia } = overwriteData
-    const nuevoLote = generarLoteAutomatico(
-      partidas.filter(p => getLote(p) !== overwriteData.existente.lote),
-      formData.fecha
-    )
+    if (!pendingData) {
+      alert('Error: datos pendientes no disponibles')
+      setShowNewNameModal(false)
+      return
+    }
+    
+    const { itemsEvaluados, tieneIncidencia } = pendingData
+    const nuevoLote = generarLoteAutomatico(partidas, formData.fecha)
     
     crearNuevaPartida(
       itemsEvaluados,
@@ -266,7 +294,7 @@ function App() {
     
     setShowNewNameModal(false)
     setNuevoNombre('')
-    setOverwriteData(null)
+    setPendingData(null)
   }
 
   const eliminarLotes = (lotesAEliminar) => {
@@ -475,7 +503,7 @@ function App() {
                 onClick={() => {
                   setShowNewNameModal(false)
                   setNuevoNombre('')
-                  setOverwriteData(null)
+                  setPendingData(null)
                 }}
                 className="flex-1 bg-negro border border-terracota py-2 rounded hover:bg-gris-oscuro transition-colors"
               >
