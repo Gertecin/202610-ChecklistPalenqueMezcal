@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Check, X, Search, Settings, ChevronLeft, AlertCircle, Calendar } from 'lucide-react'
+import { Check, X, Search, Settings, ChevronLeft, AlertCircle, Calendar, Trash2 } from 'lucide-react'
 
-// Datos de ejemplo - 20 partidas con resultados variados
 const defaultChecklistItems = [
   "Tiempo de horneado en horno de tierra respetado",
   "Molienda en piedra completa y uniforme",
@@ -18,47 +17,76 @@ const generateSeedData = () => {
     const fecha = new Date()
     fecha.setDate(fecha.getDate() - (20 - i) * 2)
     
+    const aa = String(fecha.getFullYear()).slice(-2)
+    const mm = String(fecha.getMonth() + 1).padStart(2, '0')
+    const dd = String(fecha.getDate()).padStart(2, '0')
+    const numero = String(i).padStart(3, '0')
+    const lote = `${aa}${mm}${dd}-${numero}`
+    
     const items = defaultChecklistItems.map(item => ({
       texto: item,
-      cumplido: Math.random() > 0.2 // 80% de probabilidad de estar cumplido
+      cumplido: Math.random() > 0.2
     }))
     
-    // Asegurar al menos 3 partidas con incidencias
     if (i <= 3) {
       items[Math.floor(Math.random() * items.length)].cumplido = false
     }
     
     partidas.push({
-      id: `PARTIDA-${String(i).padStart(3, '0')}`,
+      id: `PARTIDA-${lote}`,
+      lote: lote,
+      nombre: `Partida ${lote}`,
       fecha: fecha.toISOString().split('T')[0],
-      numeroLote: `L-${2026}-${String(i).padStart(3, '0')}`,
       items: items,
       observaciones: `Tipo de agave: ${tiposAgave[i % tiposAgave.length]}. Lote procesado según tradición familiar.`,
-      tieneIncidencia: items.some(item => !item.cumplido)
+      tieneIncidencia: items.some(item => !item.cumplido),
+      revision: 0
     })
   }
   
   return partidas.sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
 }
 
+const formatearFecha = (fechaISO) => {
+  if (!fechaISO) return ''
+  const [y, m, d] = fechaISO.split('-')
+  return `${d}/${m}/${y}`
+}
+
+const generarLoteAutomatico = (partidas, fecha) => {
+  const f = fecha ? new Date(fecha) : new Date()
+  const aa = String(f.getFullYear()).slice(-2)
+  const mm = String(f.getMonth() + 1).padStart(2, '0')
+  const dd = String(f.getDate()).padStart(2, '0')
+  const prefijo = `${aa}${mm}${dd}`
+  
+  const partidasDelDia = partidas.filter(p => p.lote.startsWith(prefijo))
+  const numero = String(partidasDelDia.length + 1).padStart(3, '0')
+  return `${prefijo}-${numero}`
+}
+
 function App() {
-  const [vista, setVista] = useState('checklist') // checklist, historial, detalle, admin
+  const [vista, setVista] = useState('checklist')
   const [partidas, setPartidas] = useState([])
   const [checklistItems, setChecklistItems] = useState(defaultChecklistItems)
   const [partidaSeleccionada, setPartidaSeleccionada] = useState(null)
   const [adminPassword, setAdminPassword] = useState('')
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [busqueda, setBusqueda] = useState('')
+  const [showOverwriteModal, setShowOverwriteModal] = useState(false)
+  const [overwriteData, setOverwriteData] = useState(null)
+  const [showNewNameModal, setShowNewNameModal] = useState(false)
+  const [nuevoNombre, setNuevoNombre] = useState('')
+  const [pendingSave, setPendingSave] = useState(null)
   
-  // Formulario de checklist
   const [formData, setFormData] = useState({
-    numeroLote: '',
+    nombre: '',
+    lote: '',
     fecha: new Date().toISOString().split('T')[0],
     items: {},
     observaciones: ''
   })
 
-  // Cargar datos de localStorage al iniciar
   useEffect(() => {
     const savedPartidas = localStorage.getItem('partidas')
     const savedItems = localStorage.getItem('checklistItems')
@@ -76,12 +104,20 @@ function App() {
     }
   }, [])
 
-  // Guardar partidas en localStorage cuando cambien
   useEffect(() => {
     if (partidas.length > 0) {
       localStorage.setItem('partidas', JSON.stringify(partidas))
     }
   }, [partidas])
+
+  useEffect(() => {
+    if (formData.fecha && !formData.lote) {
+      setFormData(prev => ({
+        ...prev,
+        lote: generarLoteAutomatico(partidas, prev.fecha)
+      }))
+    }
+  }, [formData.fecha])
 
   const handleItemCheck = (item, value) => {
     setFormData(prev => ({
@@ -94,8 +130,8 @@ function App() {
   }
 
   const guardarChecklist = () => {
-    if (!formData.numeroLote || !formData.fecha) {
-      alert('Por favor completá el número de lote y la fecha')
+    if (!formData.nombre || !formData.lote || !formData.fecha) {
+      alert('Por favor completá el nombre, el lote y la fecha')
       return
     }
 
@@ -106,38 +142,103 @@ function App() {
 
     const tieneIncidencia = itemsEvaluados.some(item => !item.cumplido)
 
+    const existente = partidas.find(p => p.lote === formData.lote)
+
+    if (existente) {
+      setOverwriteData({
+        existente,
+        itemsEvaluados,
+        tieneIncidencia
+      })
+      setShowOverwriteModal(true)
+      return
+    }
+
+    crearNuevaPartida(itemsEvaluados, tieneIncidencia, formData.nombre, formData.lote, formData.fecha, formData.observaciones, 0)
+  }
+
+  const crearNuevaPartida = (itemsEvaluados, tieneIncidencia, nombre, lote, fecha, observaciones, revision) => {
     const nuevaPartida = {
-      id: `PARTIDA-${formData.numeroLote}`,
-      numeroLote: formData.numeroLote,
-      fecha: formData.fecha,
+      id: `PARTIDA-${lote}-${revision}`,
+      lote: lote,
+      nombre: nombre,
+      fecha: fecha,
       items: itemsEvaluados,
-      observaciones: formData.observaciones,
-      tieneIncidencia
+      observaciones: observaciones,
+      tieneIncidencia,
+      revision
     }
 
-    // Verificar si ya existe
-    const existe = partidas.find(p => p.numeroLote === formData.numeroLote)
+    const otras = partidas.filter(p => p.lote !== lote)
+    setPartidas([nuevaPartida, ...otras])
     
-    if (existe) {
-      // Actualizar existente
-      const partidasActualizadas = partidas.map(p => 
-        p.numeroLote === formData.numeroLote ? nuevaPartida : p
-      )
-      setPartidas(partidasActualizadas)
-      alert('Checklist actualizado correctamente')
-    } else {
-      // Agregar nueva
-      setPartidas([nuevaPartida, ...partidas])
-      alert('Checklist guardado correctamente')
-    }
-
-    // Limpiar formulario
     setFormData({
-      numeroLote: '',
+      nombre: '',
+      lote: '',
       fecha: new Date().toISOString().split('T')[0],
       items: {},
       observaciones: ''
     })
+    
+    alert('Checklist guardado correctamente')
+  }
+
+  const confirmarSobrescribir = () => {
+    const { existente, itemsEvaluados, tieneIncidencia } = overwriteData
+    const nuevaRevision = (existente.revision || 0) + 1
+    
+    crearNuevaPartida(
+      itemsEvaluados,
+      tieneIncidencia,
+      formData.nombre,
+      formData.lote,
+      formData.fecha,
+      formData.observaciones,
+      nuevaRevision
+    )
+    
+    setShowOverwriteModal(false)
+    setOverwriteData(null)
+  }
+
+  const cancelarSobrescribir = () => {
+    setShowOverwriteModal(false)
+    setOverwriteData(null)
+    setShowNewNameModal(true)
+    setNuevoNombre('')
+  }
+
+  const confirmarNuevoNombre = () => {
+    if (!nuevoNombre.trim()) {
+      alert('Por favor indicá un nombre para el nuevo lote')
+      return
+    }
+    
+    const { itemsEvaluados, tieneIncidencia } = overwriteData
+    const nuevoLote = generarLoteAutomatico(
+      partidas.filter(p => p.lote !== overwriteData.existente.lote),
+      formData.fecha
+    )
+    
+    crearNuevaPartida(
+      itemsEvaluados,
+      tieneIncidencia,
+      nuevoNombre,
+      nuevoLote,
+      formData.fecha,
+      formData.observaciones,
+      0
+    )
+    
+    setShowNewNameModal(false)
+    setNuevoNombre('')
+    setOverwriteData(null)
+  }
+
+  const eliminarLotes = (lotesAEliminar) => {
+    const nuevas = partidas.filter(p => !lotesAEliminar.includes(p.lote))
+    setPartidas(nuevas)
+    alert(`${lotesAEliminar.length} lote(s) eliminado(s) correctamente`)
   }
 
   const verificarPassword = () => {
@@ -156,22 +257,20 @@ function App() {
     alert('Ítems actualizados correctamente')
   }
 
-  // Calcular estadísticas de últimas 30 partidas
   const ultimas30 = partidas.slice(0, 30)
   const conIncidencias = ultimas30.filter(p => p.tieneIncidencia).length
 
   const partidasFiltradas = partidas.filter(p => 
-    p.numeroLote.toLowerCase().includes(busqueda.toLowerCase()) ||
-    p.id.toLowerCase().includes(busqueda.toLowerCase())
+    p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+    p.lote.toLowerCase().includes(busqueda.toLowerCase())
   )
 
   return (
     <div className="min-h-screen bg-negro text-dorado">
-      {/* Header */}
       <header className="bg-gris-oscuro border-b border-terracota p-4 sticky top-0 z-10">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {vista !== 'checklist' && (
+            {vista !== 'checklist' && vista !== 'admin' && (
               <button 
                 onClick={() => setVista('checklist')}
                 className="p-2 hover:bg-terracota rounded transition-colors"
@@ -193,7 +292,6 @@ function App() {
         </div>
       </header>
 
-      {/* Contenido principal */}
       <main className="max-w-4xl mx-auto p-4">
         {vista === 'checklist' && (
           <ChecklistView 
@@ -231,11 +329,12 @@ function App() {
             checklistItems={checklistItems}
             handleSaveItems={handleSaveItems}
             setVista={setVista}
+            partidas={partidas}
+            eliminarLotes={eliminarLotes}
           />
         )}
       </main>
 
-      {/* Navegación inferior */}
       {vista !== 'detalle' && vista !== 'admin' && (
         <nav className="fixed bottom-0 left-0 right-0 bg-gris-oscuro border-t border-terracota p-4">
           <div className="max-w-4xl mx-auto flex justify-around">
@@ -257,7 +356,6 @@ function App() {
         </nav>
       )}
 
-      {/* Modal de password */}
       {showPasswordModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
           <div className="bg-gris-oscuro p-6 rounded-lg max-w-sm w-full border border-terracota">
@@ -290,26 +388,102 @@ function App() {
           </div>
         </div>
       )}
+
+      {showOverwriteModal && overwriteData && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-gris-oscuro p-6 rounded-lg max-w-sm w-full border border-terracota">
+            <AlertCircle className="text-terracota mx-auto mb-3" size={40} />
+            <h2 className="text-xl font-bold mb-3 text-terracota text-center">Lote existente</h2>
+            <p className="text-center mb-4">
+              ¿Querés sobrescribir el lote <strong className="text-dorado">{overwriteData.existente.lote}</strong>?
+            </p>
+            <div className="flex gap-2">
+              <button 
+                onClick={confirmarSobrescribir}
+                className="flex-1 bg-terracota py-2 rounded hover:bg-terracota/80 transition-colors font-bold"
+              >
+                Sí
+              </button>
+              <button 
+                onClick={cancelarSobrescribir}
+                className="flex-1 bg-negro border border-terracota py-2 rounded hover:bg-gris-oscuro transition-colors"
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNewNameModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-gris-oscuro p-6 rounded-lg max-w-sm w-full border border-terracota">
+            <h2 className="text-xl font-bold mb-4 text-terracota">Nuevo nombre</h2>
+            <p className="mb-3 text-sm">Por favor indicá un nombre para el nuevo lote</p>
+            <input
+              type="text"
+              value={nuevoNombre}
+              onChange={(e) => setNuevoNombre(e.target.value)}
+              placeholder="Nombre de la partida"
+              className="w-full p-3 mb-4 bg-negro border border-terracota rounded text-dorado"
+              onKeyPress={(e) => e.key === 'Enter' && confirmarNuevoNombre()}
+            />
+            <div className="flex gap-2">
+              <button 
+                onClick={confirmarNuevoNombre}
+                className="flex-1 bg-terracota py-2 rounded hover:bg-terracota/80 transition-colors"
+              >
+                Confirmar
+              </button>
+              <button 
+                onClick={() => {
+                  setShowNewNameModal(false)
+                  setNuevoNombre('')
+                  setOverwriteData(null)
+                }}
+                className="flex-1 bg-negro border border-terracota py-2 rounded hover:bg-gris-oscuro transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-// Componentes de vistas
 function ChecklistView({ formData, setFormData, checklistItems, handleItemCheck, guardarChecklist, setVista }) {
+  const revisionTexto = formData.revision !== undefined && formData.revision > 0 
+    ? ` - rev. ${formData.revision}` 
+    : ''
+  
   return (
     <div className="space-y-6 pb-20">
       <div className="bg-gris-oscuro p-4 rounded-lg border border-terracota">
-        <h2 className="text-xl font-bold mb-4 text-terracota">Nueva Partida</h2>
+        <h2 className="text-xl font-bold mb-4 text-terracota">
+          Nueva Partida {revisionTexto && <span className="text-dorado text-base">({revisionTexto.trim()})</span>}
+        </h2>
         
         <div className="space-y-4">
           <div>
-            <label className="block text-sm mb-2">Número de Lote</label>
+            <label className="block text-sm mb-2">Nombre de la partida</label>
             <input
               type="text"
-              value={formData.numeroLote}
-              onChange={(e) => setFormData({...formData, numeroLote: e.target.value})}
+              value={formData.nombre}
+              onChange={(e) => setFormData({...formData, nombre: e.target.value})}
               className="w-full p-3 bg-negro border border-terracota rounded text-dorado"
-              placeholder="Ej: 001"
+              placeholder="Ej: Partida Espadín Octubre"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm mb-2">Lote (automático)</label>
+            <input
+              type="text"
+              value={formData.lote}
+              readOnly
+              className="w-full p-3 bg-negro border border-dorado/30 rounded text-dorado/60 cursor-not-allowed"
             />
           </div>
           
@@ -326,7 +500,9 @@ function ChecklistView({ formData, setFormData, checklistItems, handleItemCheck,
       </div>
 
       <div className="bg-gris-oscuro p-4 rounded-lg border border-terracota">
-        <h2 className="text-xl font-bold mb-4 text-terracota">Checklist de Calidad</h2>
+        <h2 className="text-xl font-bold mb-4 text-terracota">
+          Checklist {revisionTexto}
+        </h2>
         
         <div className="space-y-3">
           {checklistItems.map((item, index) => (
@@ -389,7 +565,7 @@ function HistorialView({ partidas, setPartidaSeleccionada, busqueda, setBusqueda
             type="text"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar por número de lote..."
+            placeholder="Buscar por nombre o lote..."
             className="w-full pl-10 p-3 bg-negro border border-terracota rounded text-dorado"
           />
         </div>
@@ -416,9 +592,15 @@ function HistorialView({ partidas, setPartidaSeleccionada, busqueda, setBusqueda
             }`}
           >
             <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-bold text-terracota">{partida.numeroLote}</h3>
-                <p className="text-sm text-dorado/70">{partida.fecha}</p>
+              <div className="flex-1">
+                <h3 className="font-bold text-terracota">
+                  {partida.nombre}
+                  {partida.revision > 0 && (
+                    <span className="ml-2 text-xs text-dorado/70">- rev. {partida.revision}</span>
+                  )}
+                </h3>
+                <p className="text-sm text-dorado/70">Lote: {partida.lote}</p>
+                <p className="text-sm text-dorado/70">Fecha: {formatearFecha(partida.fecha)}</p>
               </div>
               {partida.tieneIncidencia && (
                 <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">
@@ -426,9 +608,6 @@ function HistorialView({ partidas, setPartidaSeleccionada, busqueda, setBusqueda
                 </span>
               )}
             </div>
-            <p className="text-sm mt-2 text-dorado/80 line-clamp-2">
-              {partida.observaciones}
-            </p>
           </button>
         ))}
       </div>
@@ -446,11 +625,20 @@ function DetallePartidaView({ partida, setVista }) {
   return (
     <div className="space-y-6 pb-20">
       <div className="bg-gris-oscuro p-4 rounded-lg border border-terracota">
-        <h2 className="text-xl font-bold mb-4 text-terracota">{partida.numeroLote}</h2>
+        <h2 className="text-xl font-bold mb-4 text-terracota">
+          {partida.nombre}
+          {partida.revision > 0 && (
+            <span className="ml-2 text-base text-dorado/70">- rev. {partida.revision}</span>
+          )}
+        </h2>
         <div className="space-y-2">
           <p className="flex justify-between">
+            <span className="text-dorado/70">Lote:</span>
+            <span className="font-bold">{partida.lote}</span>
+          </p>
+          <p className="flex justify-between">
             <span className="text-dorado/70">Fecha:</span>
-            <span className="font-bold">{partida.fecha}</span>
+            <span className="font-bold">{formatearFecha(partida.fecha)}</span>
           </p>
           <p className="flex justify-between">
             <span className="text-dorado/70">ID:</span>
@@ -460,7 +648,9 @@ function DetallePartidaView({ partida, setVista }) {
       </div>
 
       <div className="bg-gris-oscuro p-4 rounded-lg border border-terracota">
-        <h3 className="text-lg font-bold mb-4 text-terracota">Checklist</h3>
+        <h3 className="text-lg font-bold mb-4 text-terracota">
+          Checklist {partida.revision > 0 && <span className="text-base text-dorado/70">- rev. {partida.revision}</span>}
+        </h3>
         <div className="space-y-2">
           {partida.items.map((item, index) => (
             <div key={index} className="flex items-center justify-between p-3 bg-negro rounded">
@@ -490,9 +680,12 @@ function DetallePartidaView({ partida, setVista }) {
   )
 }
 
-function AdminView({ checklistItems, handleSaveItems, setVista }) {
+function AdminView({ checklistItems, handleSaveItems, setVista, partidas, eliminarLotes }) {
   const [items, setItems] = useState([...checklistItems])
   const [nuevoItem, setNuevoItem] = useState('')
+  const [modoBorrado, setModoBorrado] = useState(false)
+  const [lotesSeleccionados, setLotesSeleccionados] = useState([])
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false)
 
   const agregarItem = () => {
     if (nuevoItem.trim()) {
@@ -515,57 +708,177 @@ function AdminView({ checklistItems, handleSaveItems, setVista }) {
     setVista('checklist')
   }
 
+  const toggleLote = (lote) => {
+    setLotesSeleccionados(prev => 
+      prev.includes(lote) 
+        ? prev.filter(l => l !== lote)
+        : [...prev, lote]
+    )
+  }
+
+  const confirmarBorrado = () => {
+    if (lotesSeleccionados.length === 0) {
+      alert('Seleccioná al menos un lote para eliminar')
+      return
+    }
+    setShowConfirmDelete(true)
+  }
+
+  const ejecutarBorrado = () => {
+    eliminarLotes(lotesSeleccionados)
+    setLotesSeleccionados([])
+    setModoBorrado(false)
+    setShowConfirmDelete(false)
+  }
+
   return (
     <div className="space-y-6 pb-20">
       <div className="bg-gris-oscuro p-4 rounded-lg border border-terracota">
-        <h2 className="text-xl font-bold mb-4 text-terracota">Administrar Ítems del Checklist</h2>
-        
-        <div className="space-y-3 mb-6">
-          {items.map((item, index) => (
-            <div key={index} className="flex items-center gap-2 p-3 bg-negro rounded">
-              <span className="flex-1">{item}</span>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-terracota">Administración</h2>
+          <button
+            onClick={() => {
+              setModoBorrado(!modoBorrado)
+              setLotesSeleccionados([])
+            }}
+            className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-bold ${
+              modoBorrado 
+                ? 'bg-red-600 text-white' 
+                : 'bg-terracota text-white hover:bg-terracota/80'
+            }`}
+          >
+            <Trash2 size={16} />
+            {modoBorrado ? 'Cancelar borrado' : 'Borrar lotes'}
+          </button>
+        </div>
+
+        {modoBorrado ? (
+          <div>
+            <p className="text-sm mb-3 text-dorado/80">Marcá los lotes que querés eliminar:</p>
+            <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
+              {partidas.map((partida) => (
+                <div 
+                  key={partida.id}
+                  onClick={() => toggleLote(partida.lote)}
+                  className={`flex items-center gap-3 p-3 rounded cursor-pointer border ${
+                    lotesSeleccionados.includes(partida.lote)
+                      ? 'bg-red-900/30 border-red-600'
+                      : 'bg-negro border-dorado/30'
+                  }`}
+                >
+                  <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
+                    lotesSeleccionados.includes(partida.lote)
+                      ? 'bg-red-600 border-red-600'
+                      : 'border-dorado'
+                  }`}>
+                    {lotesSeleccionados.includes(partida.lote) && <X size={14} className="text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-sm">{partida.nombre}</p>
+                    <p className="text-xs text-dorado/70">Lote: {partida.lote} - {formatearFecha(partida.fecha)}</p>
+                  </div>
+                  {partida.tieneIncidencia && (
+                    <span className="bg-red-600 text-white px-2 py-1 rounded text-xs">INC</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            {lotesSeleccionados.length > 0 && (
+              <p className="text-sm mb-3">
+                <span className="text-terracota font-bold">{lotesSeleccionados.length}</span> lote(s) seleccionado(s)
+              </p>
+            )}
+            
+            <button
+              onClick={confirmarBorrado}
+              disabled={lotesSeleccionados.length === 0}
+              className={`w-full py-3 rounded-lg font-bold transition-colors ${
+                lotesSeleccionados.length > 0
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                  : 'bg-negro border border-dorado/30 text-dorado/40 cursor-not-allowed'
+              }`}
+            >
+              Eliminar seleccionados
+            </button>
+          </div>
+        ) : (
+          <div>
+            <h3 className="text-lg font-bold mb-3 text-terracota">Ítems del Checklist</h3>
+            <div className="space-y-3 mb-6">
+              {items.map((item, index) => (
+                <div key={index} className="flex items-center gap-2 p-3 bg-negro rounded">
+                  <span className="flex-1">{item}</span>
+                  <button
+                    onClick={() => eliminarItem(index)}
+                    className="p-2 bg-red-600 rounded hover:bg-red-700 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 mb-6">
+              <input
+                type="text"
+                value={nuevoItem}
+                onChange={(e) => setNuevoItem(e.target.value)}
+                placeholder="Nuevo ítem..."
+                className="flex-1 p-3 bg-negro border border-terracota rounded text-dorado"
+                onKeyPress={(e) => e.key === 'Enter' && agregarItem()}
+              />
               <button
-                onClick={() => eliminarItem(index)}
-                className="p-2 bg-red-600 rounded hover:bg-red-700 transition-colors"
+                onClick={agregarItem}
+                className="px-4 bg-terracota rounded hover:bg-terracota/80 transition-colors"
               >
-                <X size={16} />
+                Agregar
               </button>
             </div>
-          ))}
-        </div>
 
-        <div className="flex gap-2 mb-6">
-          <input
-            type="text"
-            value={nuevoItem}
-            onChange={(e) => setNuevoItem(e.target.value)}
-            placeholder="Nuevo ítem..."
-            className="flex-1 p-3 bg-negro border border-terracota rounded text-dorado"
-            onKeyPress={(e) => e.key === 'Enter' && agregarItem()}
-          />
-          <button
-            onClick={agregarItem}
-            className="px-4 bg-terracota rounded hover:bg-terracota/80 transition-colors"
-          >
-            Agregar
-          </button>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={guardar}
-            className="flex-1 bg-terracota py-3 rounded-lg font-bold hover:bg-terracota/80 transition-colors"
-          >
-            Guardar Cambios
-          </button>
-          <button
-            onClick={() => setVista('checklist')}
-            className="flex-1 bg-negro border border-terracota py-3 rounded-lg font-bold hover:bg-gris-oscuro transition-colors"
-          >
-            Cancelar
-          </button>
-        </div>
+            <div className="flex gap-2">
+              <button
+                onClick={guardar}
+                className="flex-1 bg-terracota py-3 rounded-lg font-bold hover:bg-terracota/80 transition-colors"
+              >
+                Guardar Cambios
+              </button>
+              <button
+                onClick={() => setVista('checklist')}
+                className="flex-1 bg-negro border border-terracota py-3 rounded-lg font-bold hover:bg-gris-oscuro transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {showConfirmDelete && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+          <div className="bg-gris-oscuro p-6 rounded-lg max-w-sm w-full border border-red-600">
+            <AlertCircle className="text-red-600 mx-auto mb-3" size={40} />
+            <h2 className="text-xl font-bold mb-3 text-red-600 text-center">Confirmar eliminación</h2>
+            <p className="text-center mb-4">
+              ¿Estás seguro de eliminar <strong className="text-dorado">{lotesSeleccionados.length}</strong> lote(s)? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-2">
+              <button 
+                onClick={ejecutarBorrado}
+                className="flex-1 bg-red-600 py-2 rounded hover:bg-red-700 transition-colors font-bold"
+              >
+                Sí, eliminar
+              </button>
+              <button 
+                onClick={() => setShowConfirmDelete(false)}
+                className="flex-1 bg-negro border border-terracota py-2 rounded hover:bg-gris-oscuro transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
