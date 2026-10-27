@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-terracota: #C0714B;
+  --color-negro: #1B1613;
+  --color-dorado: #C9A356;
+  --color-gris-oscuro: #2A2620;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #1B1613;
+  color: #C9A356;
+  margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Oswald', sans-serif;
+}
