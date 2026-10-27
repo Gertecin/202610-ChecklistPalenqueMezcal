@@ -9,6 +9,9 @@ const defaultChecklistItems = [
   "Graduación alcohólica final verificada"
 ]
 
+const getLote = (p) => p.lote || p.numeroLote || ''
+const getNombre = (p) => p.nombre || p.numeroLote || ''
+
 const generateSeedData = () => {
   const partidas = []
   const tiposAgave = ['Espadín', 'Tobalá', 'Tepeztate', 'Madrecuixe', 'Arroqueño']
@@ -53,9 +56,6 @@ const formatearFecha = (fechaISO) => {
   return `${d}/${m}/${y}`
 }
 
-const getLote = (p) => p.lote || p.numeroLote || ''
-const getNombre = (p) => p.nombre || p.numeroLote || ''
-
 const generarLoteAutomatico = (partidas, fecha) => {
   const f = fecha ? new Date(fecha) : new Date()
   const aa = String(f.getFullYear()).slice(-2)
@@ -64,7 +64,20 @@ const generarLoteAutomatico = (partidas, fecha) => {
   const prefijo = `${aa}${mm}${dd}`
   
   const partidasDelDia = partidas.filter(p => getLote(p).startsWith(prefijo))
-  const numero = String(partidasDelDia.length + 1).padStart(3, '0')
+  
+  let maxNumero = 0
+  partidasDelDia.forEach(p => {
+    const lote = getLote(p)
+    const partes = lote.split('-')
+    if (partes.length === 2) {
+      const numero = parseInt(partes[1], 10)
+      if (!isNaN(numero) && numero > maxNumero) {
+        maxNumero = numero
+      }
+    }
+  })
+  
+  const numero = String(maxNumero + 1).padStart(3, '0')
   return `${prefijo}-${numero}`
 }
 
@@ -80,6 +93,7 @@ function App() {
   const [overwriteData, setOverwriteData] = useState(null)
   const [showNewNameModal, setShowNewNameModal] = useState(false)
   const [nuevoNombre, setNuevoNombre] = useState('')
+  const [nombreExiste, setNombreExiste] = useState(false)
   
   const [formData, setFormData] = useState({
     nombre: '',
@@ -95,7 +109,6 @@ function App() {
     
     if (savedPartidas) {
       let parsed = JSON.parse(savedPartidas)
-      // Migrar partidas viejas que no tienen lote/nombre
       parsed = parsed.map(p => ({
         ...p,
         lote: getLote(p),
@@ -122,13 +135,23 @@ function App() {
   }, [partidas])
 
   useEffect(() => {
-    if (formData.fecha && !formData.lote) {
+    if (formData.fecha) {
+      const nuevoLote = generarLoteAutomatico(partidas, formData.fecha)
       setFormData(prev => ({
         ...prev,
-        lote: generarLoteAutomatico(partidas, prev.fecha)
+        lote: nuevoLote
       }))
     }
-  }, [formData.fecha])
+  }, [formData.fecha, partidas])
+
+  useEffect(() => {
+    if (formData.nombre.trim()) {
+      const existe = partidas.some(p => getNombre(p).toLowerCase() === formData.nombre.toLowerCase())
+      setNombreExiste(existe)
+    } else {
+      setNombreExiste(false)
+    }
+  }, [formData.nombre, partidas])
 
   const handleItemCheck = (item, value) => {
     setFormData(prev => ({
@@ -153,7 +176,7 @@ function App() {
 
     const tieneIncidencia = itemsEvaluados.some(item => !item.cumplido)
 
-    const existente = partidas.find(p => getLote(p) === formData.lote)
+    const existente = partidas.find(p => getNombre(p).toLowerCase() === formData.nombre.toLowerCase())
 
     if (existente) {
       setOverwriteData({
@@ -313,6 +336,7 @@ function App() {
             handleItemCheck={handleItemCheck}
             guardarChecklist={guardarChecklist}
             setVista={setVista}
+            nombreExiste={nombreExiste}
           />
         )}
         
@@ -405,9 +429,9 @@ function App() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
           <div className="bg-gris-oscuro p-6 rounded-lg max-w-sm w-full border border-terracota">
             <AlertCircle className="text-terracota mx-auto mb-3" size={40} />
-            <h2 className="text-xl font-bold mb-3 text-terracota text-center">Lote existente</h2>
+            <h2 className="text-xl font-bold mb-3 text-terracota text-center">Nombre existente</h2>
             <p className="text-center mb-4">
-              ¿Querés sobrescribir el lote <strong className="text-dorado">{overwriteData.existente.lote}</strong>?
+              ¿Querés sobrescribir el checklist de <strong className="text-dorado">{overwriteData.existente.nombre}</strong> (Lote {overwriteData.existente.lote})?
             </p>
             <div className="flex gap-2">
               <button 
@@ -465,7 +489,7 @@ function App() {
   )
 }
 
-function ChecklistView({ formData, setFormData, checklistItems, handleItemCheck, guardarChecklist, setVista }) {
+function ChecklistView({ formData, setFormData, checklistItems, handleItemCheck, guardarChecklist, setVista, nombreExiste }) {
   const revisionTexto = formData.revision !== undefined && formData.revision > 0 
     ? ` - rev. ${formData.revision}` 
     : ''
@@ -484,9 +508,14 @@ function ChecklistView({ formData, setFormData, checklistItems, handleItemCheck,
               type="text"
               value={formData.nombre}
               onChange={(e) => setFormData({...formData, nombre: e.target.value})}
-              className="w-full p-3 bg-negro border border-terracota rounded text-dorado"
+              className={`w-full p-3 bg-negro border rounded text-dorado ${
+                nombreExiste ? 'border-red-600' : 'border-terracota'
+              }`}
               placeholder="Ej: Partida Espadín Octubre"
             />
+            {nombreExiste && (
+              <p className="text-xs text-red-500 mt-1">⚠️ Este nombre ya existe. Se te preguntará si querés sobrescribir al guardar.</p>
+            )}
           </div>
           
           <div>
